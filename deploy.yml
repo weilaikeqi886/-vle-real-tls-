@@ -1,5 +1,5 @@
 ---
-- name: 500台VPS一键全自动部署 (私有化稳定版)
+- name: 500台VPS一键全自动部署 (私有化稳定修复版)
   hosts: all
   gather_facts: no
   vars:
@@ -14,8 +14,19 @@
     dest_sni: "microsoft.com"
 
   tasks:
+    - name: 0. 修复 Debian 11 软件源 (解决 404 报错)
+      shell: |
+        sed -i 's/bullseye\/updates/bullseye-security/g' /etc/apt/sources.list
+        sed -i 's/deb.debian.org\/debian bullseye-backports/# deb.debian.org\/debian bullseye-backports/g' /etc/apt/sources.list
+        apt-get update
+      ignore_errors: yes
+
     - name: 1. 执行系统初始化 (d11.sh)
-      shell: wget -qO- sh.alhttdw.cn/d11.sh | bash
+      shell: |
+        # 预清理可能导致脚本崩溃的过时内核参数
+        sed -i '/net.ipv4.tcp_tw_recycle/d' /etc/sysctl.conf
+        sed -i '/net.ipv4.tcp_collapse_max_bytes/d' /etc/sysctl.conf
+        wget -qO- sh.alhttdw.cn/d11.sh | bash
       ignore_errors: yes
 
     - name: 2. 安装基础依赖组件
@@ -31,21 +42,26 @@
         systemctl restart nginx
       ignore_errors: yes
 
-    - name: 4. 安装 Xray (使用私有仓库资源)
+    - name: 4. 安装 Xray (解决换行符 \r 报错)
       shell: |
         # 下载您修改后的脚本
         curl -L "{{ script_raw_url }}" -o /tmp/install.sh
+        # 【关键修复】删除 Windows 换行符，防止脚本执行报错
+        sed -i 's/\r//g' /tmp/install.sh
+        
         # 下载对应的二进制包
         curl -L "{{ release_url }}/Xray-linux-64.zip" -o /tmp/xray.zip
-        # 强制本地安装模式，跳过官方 API 检测
+        # 强制本地安装模式
         bash /tmp/install.sh install --local /tmp/xray.zip --without-geodata
       register: xray_install_res
 
     - name: 5. 部署 Dat 资源文件 (geoip/geosite)
       shell: |
+        mkdir -p /usr/local/share/xray/
         curl -L "{{ release_url }}/geoip.dat" -o /usr/local/share/xray/geoip.dat
         curl -L "{{ release_url }}/geosite.dat" -o /usr/local/share/xray/geosite.dat
         chmod 644 /usr/local/share/xray/*.dat
+      ignore_errors: yes
 
     - name: 6. 配置 Reality 并启动服务
       shell: |
@@ -54,6 +70,9 @@
         PRI=$(echo "$KEYS" | awk '/Private key:/ {print $3}')
         PUB=$(echo "$KEYS" | awk '/Public key:/ {print $3}')
         SID=$(openssl rand -hex 8)
+        
+        # 确保配置目录存在
+        mkdir -p /usr/local/etc/xray/
         
         # 写入 JSON 配置
         cat <<EOF > /usr/local/etc/xray/config.json
@@ -90,7 +109,6 @@
     - name: 7. 临时保存结果
       delegate_to: localhost
       copy:
-        # 如果第6步成功则保存链接，否则记录错误
         content: "{{ node_link.stdout if node_link.rc == 0 else 'ERROR: ' + inventory_hostname }}"
         dest: "./temp_links/{{ inventory_hostname }}.txt"
 
