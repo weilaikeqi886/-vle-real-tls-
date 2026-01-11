@@ -97,3 +97,14 @@ ansible-playbook uninstall.yml -f 30
 ```bash
 ansible nodes -m ping
 ```
+# <mark>新一键脚本</mark>
+
+```bash
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install.sh && bash install.sh
+```
+
+# <mark>然后执行这个</mark>
+
+```bash
+cd /root/reality_batch && ansible-playbook -i hosts.ini deploy.yml -f 30
+```
