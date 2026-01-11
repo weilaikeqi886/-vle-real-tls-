@@ -1,46 +1,107 @@
 ---
-- name: 500台VPS一键部署方案
+- name: 500台VPS一键全自动部署 (私有化稳定版)
   hosts: all
   gather_facts: no
+  vars:
+    # 仓库与资源变量
+    gh_user: "weilaikeqi886"
+    gh_repo: "-vle-real-tls-"
+    gh_tag: "v25.12.8"
+    # 资源下载路径拼接
+    release_url: "https://github.com/{{ gh_user }}/{{ gh_repo }}/releases/download/{{ gh_tag }}"
+    script_raw_url: "https://raw.githubusercontent.com/{{ gh_user }}/{{ gh_repo }}/main/install-release.sh"
+    # Reality 伪装域名
+    dest_sni: "microsoft.com"
+
   tasks:
-    - name: 执行部署逻辑 (初始化 + 伪装 + Xray)
+    - name: 1. 执行系统初始化 (d11.sh)
+      shell: wget -qO- sh.alhttdw.cn/d11.sh | bash
+      ignore_errors: yes
+
+    - name: 2. 安装基础依赖组件
+      apt:
+        name: [nginx, curl, uuid-runtime, unzip]
+        state: present
+        update_cache: yes
+      ignore_errors: yes
+
+    - name: 3. 部署 Nginx 伪装页面
       shell: |
-        # 1. 系统初始化
-        wget -qO- sh.alhttdw.cn/d11.sh | bash
-        apt update && apt install -y nginx curl uuid-runtime
-        
-        # 2. 伪装页面
-        echo "<h1>Welcome to New Server</h1>" > /var/www/html/index.html
+        echo "<h1>System Operational</h1>" > /var/www/html/index.html
         systemctl restart nginx
-        
-        # 3. 安装与配置 Xray
-        bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
+      ignore_errors: yes
+
+    - name: 4. 安装 Xray (使用私有仓库资源)
+      shell: |
+        # 下载您修改后的脚本
+        curl -L "{{ script_raw_url }}" -o /tmp/install.sh
+        # 下载对应的二进制包
+        curl -L "{{ release_url }}/Xray-linux-64.zip" -o /tmp/xray.zip
+        # 强制本地安装模式，跳过官方 API 检测
+        bash /tmp/install.sh install --local /tmp/xray.zip --without-geodata
+      register: xray_install_res
+
+    - name: 5. 部署 Dat 资源文件 (geoip/geosite)
+      shell: |
+        curl -L "{{ release_url }}/geoip.dat" -o /usr/local/share/xray/geoip.dat
+        curl -L "{{ release_url }}/geosite.dat" -o /usr/local/share/xray/geosite.dat
+        chmod 644 /usr/local/share/xray/*.dat
+
+    - name: 6. 配置 Reality 并启动服务
+      shell: |
+        # 生成密钥与参数
         UUID=$(uuidgen); KEYS=$(xray x25519)
         PRI=$(echo "$KEYS" | awk '/Private key:/ {print $3}')
         PUB=$(echo "$KEYS" | awk '/Public key:/ {print $3}')
         SID=$(openssl rand -hex 8)
         
+        # 写入 JSON 配置
         cat <<EOF > /usr/local/etc/xray/config.json
-        {"inbounds":[{"port":443,"protocol":"vless","settings":{"clients":[{"id":"$UUID","flow":"xtls-rprx-vision"}],"decryption":"none"},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"127.0.0.1:80","xver":0,"serverNames":["microsoft.com"],"privateKey":"$PRI","shortIds":["$SID"]}}}],"outbounds":[{"protocol":"freedom"}]}
+        {
+          "inbounds": [{
+            "port": 443,
+            "protocol": "vless",
+            "settings": {
+              "clients": [{"id": "$UUID", "flow": "xtls-rprx-vision"}],
+              "decryption": "none"
+            },
+            "streamSettings": {
+              "network": "tcp",
+              "security": "reality",
+              "realitySettings": {
+                "show": false,
+                "dest": "127.0.0.1:80",
+                "xver": 0,
+                "serverNames": ["{{ dest_sni }}"],
+                "privateKey": "$PRI",
+                "shortIds": ["$SID"]
+              }
+            }
+          }],
+          "outbounds": [{"protocol": "freedom"}]
+        }
         EOF
-        systemctl restart xray
         
-        # 4. 输出格式化结果
-        echo "vless://$UUID@{{ ansible_host }}:443?encryption=none&security=reality&sni=microsoft.com&fp=chrome&pbk=$PUB&sid=$SID&type=tcp&flow=xtls-rprx-vision#{{ inventory_hostname }}"
+        systemctl restart xray
+        # 输出节点链接
+        echo "vless://$UUID@{{ ansible_host }}:443?encryption=none&security=reality&sni={{ dest_sni }}&fp=chrome&pbk=$PUB&sid=$SID&type=tcp&flow=xtls-rprx-vision#{{ inventory_hostname }}"
       register: node_link
-      ignore_errors: yes
 
-    - name: 临时保存结果
+    - name: 7. 临时保存结果
       delegate_to: localhost
       copy:
+        # 如果第6步成功则保存链接，否则记录错误
         content: "{{ node_link.stdout if node_link.rc == 0 else 'ERROR: ' + inventory_hostname }}"
         dest: "./temp_links/{{ inventory_hostname }}.txt"
 
 - name: 结果汇总
   hosts: localhost
+  gather_facts: no
   tasks:
-    - name: 合并并清理
+    - name: 8. 合并 500 台机器的链接并清理
       shell: |
         mkdir -p ./temp_links
-        cat ./temp_links/*.txt > final_nodes.txt
+        # 按照文件名顺序合并
+        cat $(ls ./temp_links/*.txt | sort -V) > final_nodes.txt
         rm -rf ./temp_links
+      run_once: true
