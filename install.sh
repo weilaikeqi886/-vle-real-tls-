@@ -1,23 +1,27 @@
 #!/bin/bash
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-PLAIN='\033[0m'
+# 定义颜色
+export RED='\033[0;31m'
+export GREEN='\033[0;32m'
+export YELLOW='\033[1;33m'
+export BLUE='\033[0;34m'
+export PLAIN='\033[0m'
 
-echo -e "${BLUE}开始初始化 REALITY 批量部署环境...${PLAIN}"
+clear
+echo -e "${BLUE}==================================================${PLAIN}"
+echo -e "${BLUE}       REALITY 1000台服务器批量部署环境初始化       ${PLAIN}"
+echo -e "${BLUE}==================================================${PLAIN}"
 
 # 1. 安装基础依赖
-apt update
-apt install ansible sshpass python3 curl -y
+echo -e "${YELLOW}正在安装 Ansible 及必要组件...${PLAIN}"
+apt update && apt install ansible sshpass python3 curl -y
 
 # 2. 创建目录结构
 WORKDIR="reality_batch"
 mkdir -p ~/${WORKDIR}/results
 cd ~/${WORKDIR}
 
-# 3. 写入全能版 deploy.yml
+# 3. 写入全能版 deploy.yml (集成你所有的逻辑：端口、伪装页、自动链接)
 cat <<'EOF' > deploy.yml
 ---
 - name: 1000台服务器 REALITY 全自动部署
@@ -66,7 +70,6 @@ cat <<'EOF' > deploy.yml
         ntpdate -u pool.ntp.org || true
         iptables -F && iptables -X
         iptables -P INPUT ACCEPT && iptables -P FORWARD ACCEPT && iptables -P OUTPUT ACCEPT
-        # 写入粒子云网页
         cat <<'HTML' > /var/www/html/index.html
         <!DOCTYPE html><html><head><title>Welcome</title><style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style></head><body><canvas id="canvas"></canvas><script>const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");let w,h,particles=[];function init(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;particles=[];for(let i=0;i<100;i++)particles.push({x:Math.random()*w,y:Math.random()*h,vx:Math.random()-.5,vy:Math.random()-.5})}function draw(){ctx.fillStyle="rgba(0,0,0,0.05)";ctx.fillRect(0,0,w,h);ctx.fillStyle="#fff";particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fill()});requestAnimationFrame(draw)}window.onresize=init;init();draw();</script></body></html>
         HTML
@@ -129,4 +132,51 @@ cat <<'EOF' > deploy.yml
                 if f.endswith('.txt'):
                     with open(os.path.join(res_dir, f), 'r') as file:
                         d = dict(x.split('=') for x in file.read().strip().split(','))
-                        p = {"encryption":"none","flow":"xtls-rprx-vision","security":"reality","sni":"{{ dest_
+                        p = {"encryption":"none","flow":"xtls-rprx-vision","security":"reality","sni":"{{ dest_domain }}","fp":"chrome","pbk":d['pub'],"sid":"6a2b3c4d","type":"tcp"}
+                        url = f"vless://{d['uuid']}@{d['ip']}:{d['port']}?{urllib.parse.urlencode(p)}#Reality_{d['ip']}"
+                        links.append(url)
+            with open('all_links.txt', 'w') as f: f.write('\n'.join(links))
+            with open('subscribe.txt', 'w') as f: f.write(base64.b64encode('\n'.join(links).encode()).decode())
+        PY
+        python3 gen_links.py
+      args:
+        executable: /bin/bash
+EOF
+
+# 4. 生成卸载剧本
+cat <<'EOF' > uninstall.yml
+---
+- name: 彻底卸载
+  hosts: nodes
+  gather_facts: no
+  tasks:
+    - shell: |
+        systemctl stop xray nginx || true
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+        apt-get purge -y nginx || true
+        rm -rf /usr/local/etc/xray /var/www/html/index.html /tmp/node_info.txt
+        apt-get autoremove -y
+EOF
+
+# 5. 生成 hosts.ini 模版
+cat <<'EOF' > hosts.ini
+[nodes]
+# 示例：38.58.62.35 ansible_ssh_pass="你的密码" ansible_port=22
+
+[nodes:vars]
+ansible_ssh_user=root
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
+EOF
+
+# 6. 打印后续指引
+echo -e "${GREEN}==================================================${PLAIN}"
+echo -e "${GREEN}        ✅ 脚本环境初始化完成！${PLAIN}"
+echo -e "${GREEN}==================================================${PLAIN}"
+echo -e "${YELLOW}后续操作步骤：${PLAIN}"
+echo -e "${BLUE}1. 进入工作目录：${PLAIN} cd ~/${WORKDIR}"
+echo -e "${BLUE}2. 编辑清单：${PLAIN} nano hosts.ini ${YELLOW} (填入你的 1000 台服务器 IP 和密码)${PLAIN}"
+echo -e "${BLUE}3. 开启部署：${PLAIN} ansible-playbook deploy.yml -f 30"
+echo -e "${BLUE}4. 获取链接：${PLAIN} 部署完成后直接查看 ${GREEN}all_links.txt${PLAIN}"
+echo -e "${BLUE}5. 卸载节点：${PLAIN} ansible-playbook uninstall.yml -f 30"
+echo -e "${BLUE}==================================================${PLAIN}"
