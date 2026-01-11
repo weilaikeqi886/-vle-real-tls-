@@ -37,3 +37,10 @@ ansible-playbook -i hosts.ini deploy.yml -f 50
 
 全自动化：从   ```d11.sh```   初始化、Nginx 伪装、Reality 私钥生成到最终导出链接，全部一气呵成。
 
+
+
+批量卸载 下载cleanup.yml 到/root
+然后
+```bash
+ansible-playbook -i hosts.ini cleanup.yml -f 50
+```
