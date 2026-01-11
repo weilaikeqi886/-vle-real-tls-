@@ -161,7 +161,7 @@ EOF
 # 5. 生成 hosts.ini 模版
 cat <<'EOF' > hosts.ini
 [nodes]
-# 示例：38.58.62.35 ansible_ssh_pass="你的密码" ansible_port=22
+# 示例：8.8.8.8 ansible_ssh_pass="你的密码" ansible_port=22
 
 [nodes:vars]
 ansible_ssh_user=root
