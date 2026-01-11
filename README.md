@@ -92,3 +92,8 @@ EOF
 ```bash
 ansible-playbook uninstall.yml -f 30
 ```
+
+# 7. 验证连接是否成功
+```bash
+ansible nodes -m ping
+```
