@@ -1,3 +1,4 @@
+<s>
 # -vle-real-tls-静态伪装
 
 ### 第一步：管理机环境创建需要运行的脚本
@@ -44,7 +45,7 @@ ansible-playbook -i hosts.ini deploy.yml -f 50
 ```bash
 ansible-playbook -i hosts.ini cleanup.yml -f 50
 ```
-
+</s>
 
 ### 只需要：
 1. 准备好 hosts.ini -> 2. 运行一次 deploy.yml。所有的事情（包括生成链接）都会在这一步里全部完成。
