@@ -1,119 +1,121 @@
 ---
-- name: 500台VPS一键全自动部署 (私有化稳定版)
-  hosts: all
+- name: 1000台服务器 REALITY 全自动极简部署 (最终版)
+  hosts: nodes
   gather_facts: no
   vars:
-    # 仓库与资源变量
-    gh_user: "weilaikeqi886"
-    gh_repo: "-vle-real-tls-"
-    gh_tag: "v25.12.8"
-    # 资源下载路径拼接
-    release_url: "https://github.com/{{ gh_user }}/{{ gh_repo }}/releases/download/{{ gh_tag }}"
-    script_raw_url: "https://raw.githubusercontent.com/{{ gh_user }}/{{ gh_repo }}/main/install-release.sh"
-    # Reality 伪装域名
-    dest_sni: "microsoft.com"
+    # ==========================================
+    # 只需要修改这两个变量，一切都会自动同步
+    # ==========================================
+    listen_port: 26443
+    dest_domain: "dl.google.com"
 
   tasks:
-    - name: 1. 执行系统初始化 (d11.sh)
-      shell: |
-        # 预先清理会导致脚本在 Debian 11 上报错的过时内核参数
-        sed -i '/tcp_tw_recycle/d' /etc/sysctl.conf
-        sed -i '/tcp_collapse_max_bytes/d' /etc/sysctl.conf
-        wget -qO- sh.alhttdw.cn/d11.sh | bash
-      ignore_errors: yes
-
-    - name: 2. 安装基础依赖组件
-      apt:
-        name: [nginx, curl, uuid-runtime, unzip]
-        state: present
-        update_cache: yes
-      ignore_errors: yes
-
-    - name: 3. 部署 Nginx 伪装页面
-      shell: |
-        echo "<h1>System Operational</h1>" > /var/www/html/index.html
-        systemctl restart nginx
-      ignore_errors: yes
-
-    - name: 4. 安装 Xray (关键修复：转换换行符)
-      shell: |
-        # 下载您修改后的脚本
-        curl -L "{{ script_raw_url }}" -o /tmp/install.sh
-        
-        # 【核心修复】将 Windows 换行符 \r 删掉，转为 Linux 格式
-        sed -i 's/\r//g' /tmp/install.sh
-        
-        # 下载对应的二进制包
-        curl -L "{{ release_url }}/Xray-linux-64.zip" -o /tmp/xray.zip
-        
-        # 强制本地安装模式
-        bash /tmp/install.sh install --local /tmp/xray.zip --without-geodata
-      register: xray_install_res
-
-    - name: 5. 部署 Dat 资源文件 (geoip/geosite)
-      shell: |
-        mkdir -p /usr/local/share/xray/
-        curl -L "{{ release_url }}/geoip.dat" -o /usr/local/share/xray/geoip.dat
-        curl -L "{{ release_url }}/geosite.dat" -o /usr/local/share/xray/geosite.dat
-        chmod 644 /usr/local/share/xray/*.dat
-      ignore_errors: yes
-
-    - name: 6. 配置 Reality 并启动服务
-      shell: |
-        # 生成密钥与参数
-        UUID=$(uuidgen); KEYS=$(xray x25519)
-        PRI=$(echo "$KEYS" | awk '/Private key:/ {print $3}')
-        PUB=$(echo "$KEYS" | awk '/Public key:/ {print $3}')
-        SID=$(openssl rand -hex 8)
-        
-        # 确保目录存在
-        mkdir -p /usr/local/etc/xray/
-        
-        # 写入 JSON 配置
-        cat <<EOF > /usr/local/etc/xray/config.json
-        {
-          "inbounds": [{
-            "port": 443,
-            "protocol": "vless",
-            "settings": {
-              "clients": [{"id": "$UUID", "flow": "xtls-rprx-vision"}],
-              "decryption": "none"
-            },
-            "streamSettings": {
-              "network": "tcp",
-              "security": "reality",
-              "realitySettings": {
-                "show": false,
-                "dest": "127.0.0.1:80",
-                "xver": 0,
-                "serverNames": ["{{ dest_sni }}"],
-                "privateKey": "$PRI",
-                "shortIds": ["$SID"]
-              }
-            }
-          }],
-          "outbounds": [{"protocol": "freedom"}]
-        }
-        EOF
-        
-        systemctl restart xray
-        # 输出节点链接
-        echo "vless://$UUID@{{ ansible_host }}:443?encryption=none&security=reality&sni={{ dest_sni }}&fp=chrome&pbk=$PUB&sid=$SID&type=tcp&flow=xtls-rprx-vision#{{ inventory_hostname }}"
-      register: node_link
-
-    - name: 7. 临时保存结果
+    - name: 1. [本地] 初始化：生成 Xray 配置模板
       delegate_to: localhost
-      copy:
-        content: "{{ node_link.stdout if (node_link is defined and node_link.rc == 0) else 'ERROR: ' + inventory_hostname }}"
-        dest: "./temp_links/{{ inventory_hostname }}.txt"
-
-- name: 结果汇总
-  hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: 8. 合并 500 台机器的链接并清理
-      shell: |
-        mkdir -p ./temp_links
-        cat $(ls ./temp_links/*.txt | sort -V) > final_nodes.txt
-        rm -rf ./temp_links
       run_once: true
+      copy:
+        dest: "./xray.conf.j2"
+        content: |
+          {
+              "log": { "loglevel": "warning" },
+              "inbounds": [{
+                  "port": {{ listen_port }},
+                  "protocol": "vless",
+                  "settings": {
+                      "clients": [{"id": "{{ "{{ uuid }}" }}", "flow": "xtls-rprx-vision"}],
+                      "decryption": "none"
+                  },
+                  "streamSettings": {
+                      "network": "tcp",
+                      "security": "reality",
+                      "realitySettings": {
+                          "show": false,
+                          "dest": "{{ dest_domain }}:443",
+                          "xver": 0,
+                          "serverNames": ["{{ dest_domain }}"],
+                          "privateKey": "{{ "{{ private_key }}" }}",
+                          "shortIds": ["6a2b3c4d"]
+                      }
+                  }
+              }],
+              "outbounds": [{ "protocol": "freedom" }]
+          }
+
+    - name: 2. [被控机] 环境修复、防火墙放行与伪装网页部署
+      shell: |
+        apt-get update && apt-get install -y curl ntpdate nginx
+        ntpdate -u pool.ntp.org || true
+        iptables -F && iptables -X
+        iptables -P INPUT ACCEPT && iptables -P FORWARD ACCEPT && iptables -P OUTPUT ACCEPT
+        # 写入粒子云伪装网页
+        cat <<'HTML' > /var/www/html/index.html
+        <!DOCTYPE html><html><head><title>Welcome</title><style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style></head><body><canvas id="canvas"></canvas><script>const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");let w,h,particles=[];function init(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;particles=[];for(let i=0;i<100;i++)particles.push({x:Math.random()*w,y:Math.random()*h,vx:Math.random()-.5,vy:Math.random()-.5})}function draw(){ctx.fillStyle="rgba(0,0,0,0.05)";ctx.fillRect(0,0,w,h);ctx.fillStyle="#fff";particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fill()});requestAnimationFrame(draw)}window.onresize=init;init();draw();</script></body></html>
+        HTML
+        systemctl restart nginx && systemctl enable nginx
+      ignore_errors: yes
+
+    - name: 3. [被控机] 安装 Xray 并生成密钥
+      shell: |
+        if [ ! -f "/usr/local/bin/xray" ]; then
+          curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash -s -- install
+        fi
+        /usr/local/bin/xray x25519
+      register: key_output
+
+    - name: 4. [被控机] 提取变量并配置
+      set_fact:
+        priv_key: "{{ key_output.stdout_lines[0].split(': ')[1] | trim }}"
+        pub_key: "{{ key_output.stdout_lines[1].split(': ')[1] | trim }}"
+        my_uuid: "{{ lookup('password', '/dev/null length=36 chars=ascii_letters') | to_uuid }}"
+
+    - name: 5. [被控机] 下发配置并启动服务
+      template:
+        src: "./xray.conf.j2"
+        dest: /usr/local/etc/xray/config.json
+      vars:
+        uuid: "{{ my_uuid }}"
+        private_key: "{{ priv_key }}"
+
+    - name: 6. [被控机] 启动 Xray 与 BBR 优化
+      shell: |
+        systemctl enable xray && systemctl restart xray
+        if ! grep -q "bbr" /etc/sysctl.conf; then
+          echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+          sysctl -p
+        fi
+      ignore_errors: yes
+
+    - name: 7. [被控机] 写入凭据用于回收
+      copy:
+        content: "ip={{ inventory_hostname }},uuid={{ my_uuid }},pub={{ pub_key }},port={{ listen_port }}"
+        dest: /tmp/node_info.txt
+
+    - name: 8. [回收] 将凭据拉回到控制机
+      fetch:
+        src: /tmp/node_info.txt
+        dest: "./results/{{ inventory_hostname }}.txt"
+        flat: yes
+
+    - name: 9. [本地] 自动汇总生成订阅链接
+      delegate_to: localhost
+      run_once: true
+      shell: |
+        cat <<'PY' > gen_links.py
+        import os, urllib.parse, base64
+        links = []
+        res_dir = './results'
+        if os.path.exists(res_dir):
+            for f in os.listdir(res_dir):
+                if f.endswith('.txt'):
+                    with open(os.path.join(res_dir, f), 'r') as file:
+                        d = dict(x.split('=') for x in file.read().strip().split(','))
+                        p = {"encryption":"none","flow":"xtls-rprx-vision","security":"reality","sni":"{{ dest_domain }}","fp":"chrome","pbk":d['pub'],"sid":"6a2b3c4d","type":"tcp"}
+                        url = f"vless://{d['uuid']}@{d['ip']}:{d['port']}?{urllib.parse.urlencode(p)}#Reality_{d['ip']}"
+                        links.append(url)
+            with open('all_links.txt', 'w') as f: f.write('\n'.join(links))
+            with open('subscribe.txt', 'w') as f: f.write(base64.b64encode('\n'.join(links).encode()).decode())
+        PY
+        python3 gen_links.py
+      args:
+        executable: /bin/bash
