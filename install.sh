@@ -21,16 +21,14 @@ WORKDIR="reality_batch"
 mkdir -p ~/${WORKDIR}/results
 cd ~/${WORKDIR}
 
-# 3. 写入增强版 deploy.yml (加入交互式询问)
-cat <<'EOF' > deploy.yml
+# 3. 写入增强版 deploy.yml
+# 特别注意：最后的 EOF 必须顶格，代码中的缩进已处理
+cat << 'EOF' > deploy.yml
 ---
 - name: 1000台服务器 REALITY 全自动部署
   hosts: nodes
   gather_facts: no
 
-  # ==========================================
-  # 交互式询问：运行剧本后会提示输入端口
-  # ==========================================
   vars_prompt:
     - name: "listen_port"
       prompt: "请输入想要在哪个端口上部署？(直接回车默认443)"
@@ -53,7 +51,7 @@ cat <<'EOF' > deploy.yml
                   "port": {{ listen_port }},
                   "protocol": "vless",
                   "settings": {
-                      "clients": [{"id": "{{ "{{ uuid }}" }}", "flow": "xtls-rprx-vision"}],
+                      "clients": [{"id": "{{ "{{ my_uuid }}" }}", "flow": "xtls-rprx-vision"}],
                       "decryption": "none"
                   },
                   "streamSettings": {
@@ -64,7 +62,7 @@ cat <<'EOF' > deploy.yml
                           "dest": "{{ dest_domain }}:443",
                           "xver": 0,
                           "serverNames": ["{{ dest_domain }}"],
-                          "privateKey": "{{ "{{ private_key }}" }}",
+                          "privateKey": "{{ "{{ priv_key }}" }}",
                           "shortIds": ["6a2b3c4d"]
                       }
                   }
@@ -78,7 +76,7 @@ cat <<'EOF' > deploy.yml
         ntpdate -u pool.ntp.org || true
         iptables -F && iptables -X
         iptables -P INPUT ACCEPT && iptables -P FORWARD ACCEPT && iptables -P OUTPUT ACCEPT
-        cat <<'HTML' > /var/www/html/index.html
+        cat << 'HTML' > /var/www/html/index.html
         <!DOCTYPE html><html><head><title>Welcome</title><style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style></head><body><canvas id="canvas"></canvas><script>const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");let w,h,particles=[];function init(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;particles=[];for(let i=0;i<100;i++)particles.push({x:Math.random()*w,y:Math.random()*h,vx:Math.random()-.5,vy:Math.random()-.5})}function draw(){ctx.fillStyle="rgba(0,0,0,0.05)";ctx.fillRect(0,0,w,h);ctx.fillStyle="#fff";particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>w)p.vx*=-1;if(p.y<0||p.y>h)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fill()});requestAnimationFrame(draw)}window.onresize=init;init();draw();</script></body></html>
         HTML
         systemctl restart nginx && systemctl enable nginx
@@ -128,7 +126,7 @@ cat <<'EOF' > deploy.yml
       delegate_to: localhost
       run_once: true
       shell: |
-        cat <<'PY' > gen_links.py
+        cat << 'PY' > gen_links.py
         import os, urllib.parse, base64
         links = []
         res_dir = './results'
@@ -136,10 +134,12 @@ cat <<'EOF' > deploy.yml
             for f in os.listdir(res_dir):
                 if f.endswith('.txt'):
                     with open(os.path.join(res_dir, f), 'r') as file:
-                        d = dict(x.split('=') for x in file.read().strip().split(','))
-                        p = {"encryption":"none","flow":"xtls-rprx-vision","security":"reality","sni":"{{ dest_domain }}","fp":"chrome","pbk":d['pub'],"sid":"6a2b3c4d","type":"tcp"}
-                        url = f"vless://{d['uuid']}@{d['ip']}:{d['port']}?{urllib.parse.urlencode(p)}#Reality_{d['ip']}"
-                        links.append(url)
+                        c = file.read().strip()
+                        if c:
+                            d = dict(x.split('=') for x in c.split(','))
+                            p = {"encryption":"none","flow":"xtls-rprx-vision","security":"reality","sni":"{{ dest_domain }}","fp":"chrome","pbk":d['pub'],"sid":"6a2b3c4d","type":"tcp"}
+                            url = f"vless://{d['uuid']}@{d['ip']}:{d['port']}?{urllib.parse.urlencode(p)}#Reality_{d['ip']}"
+                            links.append(url)
             with open('all_links.txt', 'w') as f: f.write('\n'.join(links))
             with open('subscribe.txt', 'w') as f: f.write(base64.b64encode('\n'.join(links).encode()).decode())
         PY
@@ -148,16 +148,37 @@ cat <<'EOF' > deploy.yml
         executable: /bin/bash
 EOF
 
-# 4. 生成卸载剧本和 hosts 模板 (保持不变)
-# ... [此处省略部分代码以节省篇幅，实际脚本中应包含之前生成的 uninstall.yml 和 hosts.ini 内容] ...
+# 4. 生成 hosts.ini 模板
+cat << 'EOF' > hosts.ini
+[nodes]
+# 格式示例：38.58.62.35 ansible_port=22 ansible_ssh_pass="你的密码"
 
-# 6. 打印后续指引
+[nodes:vars]
+ansible_ssh_user=root
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
+EOF
+
+# 5. 生成卸载剧本
+cat << 'EOF' > uninstall.yml
+---
+- name: 彻底卸载
+  hosts: nodes
+  tasks:
+    - shell: |
+        systemctl stop xray nginx || true
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+        apt-get purge -y nginx || true
+        rm -rf /usr/local/etc/xray /var/www/html/index.html /tmp/node_info.txt
+EOF
+
+# 6. 打印指引
 echo -e "${GREEN}==================================================${PLAIN}"
-echo -e "${GREEN}        ✅ 脚本环境初始化完成！${PLAIN}"
+echo -e "${GREEN}         ✅ 脚本环境初始化完成！${PLAIN}"
 echo -e "${GREEN}==================================================${PLAIN}"
 echo -e "${YELLOW}后续操作步骤：${PLAIN}"
 echo -e "${BLUE}1. 进入工作目录：${PLAIN} cd ~/${WORKDIR}"
-echo -e "${BLUE}2. 编辑清单：${PLAIN} nano hosts.ini ${YELLOW} (填入 IP 和密码)${PLAIN}"
-echo -e "${BLUE}3. 开启部署：${PLAIN} ansible-playbook deploy.yml -f 30"
-echo -e "   ${YELLOW}* 执行后请根据提示输入端口，默认 443${PLAIN}"
+echo -e "${BLUE}2. 编辑清单：${PLAIN} cd /root/reality_batch && nano hosts.ini ${YELLOW} (填入 IP 和密码)${PLAIN}"
+echo -e "${BLUE}3. 开启部署：${PLAIN} cd /root/reality_batch && ansible-playbook -i hosts.ini deploy.yml -f 30"
+echo -e "    ${YELLOW}* 执行后请根据提示输入端口，默认 443${PLAIN}"
 echo -e "${BLUE}4. 获取链接：${PLAIN} 查看 ${GREEN}all_links.txt${PLAIN}"
