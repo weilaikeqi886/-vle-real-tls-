@@ -44,3 +44,50 @@ ansible-playbook -i hosts.ini deploy.yml -f 50
 ```bash
 ansible-playbook -i hosts.ini cleanup.yml -f 50
 ```
+
+
+### 只需要：
+1. 准备好 hosts.ini -> 2. 运行一次 deploy.yml。所有的事情（包括生成链接）都会在这一步里全部完成。
+
+如果有任何特定的机器部署失败（比如 PLAY RECAP 里显示 failed=1），你可以运行： ansible-playbook deploy.yml --limit 失败的IP 进行重试。
+
+# 1. 更新系统并安装 Ansible 与依赖
+```bash
+apt update && apt install ansible sshpass python3 curl -y
+```
+
+# 2. 创建并进入工作目录
+```bash
+mkdir -p ~/reality_batch && cd ~/reality_batch && mkdir -p results
+```
+
+# 3. 上传 ```deploy.yml``` 和 ```hosts.ini```
+
+# 4. 执行部署，-f 30 表示并发 30 台同时跑
+
+```bash
+ansible-playbook deploy.yml -f 30
+```
+
+# 5. 一键卸载
+```bash
+cat <<'EOF' > uninstall.yml
+---
+- name: 彻底卸载 Xray 和伪装网页
+  hosts: nodes
+  gather_facts: no
+  tasks:
+    - shell: |
+        systemctl stop xray nginx || true
+        bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+        apt-get purge -y nginx || true
+        rm -rf /usr/local/etc/xray /var/www/html/index.html /tmp/node_info.txt
+        apt-get autoremove -y
+EOF
+```
+
+
+# 6. 执行卸载
+```bash
+ansible-playbook uninstall.yml -f 30
+```
