@@ -12,7 +12,7 @@ echo -e "${BLUE}==================================================${PLAIN}"
 echo -e "${BLUE}       REALITY 1000台全自动交互部署 (炫彩版)       ${PLAIN}"
 echo -e "${BLUE}==================================================${PLAIN}"
 
-# 1. 自动安装基础依赖并创建目录 (解决您的第一个要求)
+# 1. 自动安装基础依赖并创建目录
 echo -e "${YELLOW}正在配置本地环境与依赖...${PLAIN}"
 apt update && apt install ansible sshpass python3 curl -y
 
@@ -181,9 +181,9 @@ while true; do
     echo -e "\n${BLUE}--- 服务器 #$COUNT ---${PLAIN}"
     read -p "IP 地址: " V_IP
     if [[ -z "$V_IP" ]]; then break; fi
-    read -p "SSH 端口 (22): " V_PORT
+    read -p "SSH 端口 (默认22): " V_PORT
     V_PORT=${V_PORT:-22}
-    read -p "SSH 用户 (root): " V_USER
+    read -p "SSH 用户 (默认root): " V_USER
     V_USER=${V_USER:-root}
     read -p "SSH 密码: " V_PASS
     if [[ -z "$V_PASS" ]]; then echo -e "${RED}跳过：密码必填${PLAIN}"; continue; fi
@@ -198,10 +198,17 @@ ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
 EOF
 
-# 4. 自动执行部署 (解决您的第三个要求)
+# 4. 自动执行部署并在最后输出路径
 if [ $COUNT -gt 1 ]; then
-    echo -e "\n${GREEN}录入完成！正在启动 1000 台并发自动部署...${PLAIN}"
+    echo -e "\n${GREEN}录入完成！正在启动 $((COUNT-1)) 台服务器并发自动部署...${PLAIN}"
     ansible-playbook -i hosts.ini deploy.yml -f 30
+    
+    echo -e "\n${BLUE}==================================================${PLAIN}"
+    echo -e "${GREEN}             🎉 所有任务执行完毕！${PLAIN}"
+    echo -e "${BLUE}==================================================${PLAIN}"
+    echo -e "${YELLOW}节点明文链接文件：${PLAIN}${CYAN} ${WORKDIR}/all_links.txt ${PLAIN}"
+    echo -e "${YELLOW}Base64订阅文件：  ${PLAIN}${CYAN} ${WORKDIR}/subscribe.txt ${PLAIN}"
+    echo -e "${BLUE}==================================================${PLAIN}"
 else
     echo -e "${YELLOW}未添加任何服务器，退出脚本。${PLAIN}"
 fi
