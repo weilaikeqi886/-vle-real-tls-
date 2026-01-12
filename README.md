@@ -108,6 +108,12 @@ wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/inst
 wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive.sh && bash install_interactive.sh
 ```
 
+# <mark>真一键+交互+自动执行+随机鼠标跟随粒子云</mark>
+
+```bash
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive2.sh && bash install_interactive2.sh
+```
+
 
 # <mark>然后执行这个</mark>
 
