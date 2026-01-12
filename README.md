@@ -100,8 +100,14 @@ ansible nodes -m ping
 # <mark>新一键脚本</mark>
 
 ```bash
-wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install.sh && bash install.sh
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install3.sh && bash install3.sh
 ```
+# <mark>这是一个带交互输入ssh信息的一键脚本</mark>
+
+```bash
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive.sh && bash install_interactive.sh
+```
+
 
 # <mark>然后执行这个</mark>
 
