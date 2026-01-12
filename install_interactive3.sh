@@ -10,7 +10,7 @@ export PLAIN='\033[0m'
 
 clear
 echo -e "${BLUE}==================================================${PLAIN}"
-echo -e "${BLUE}       REALITY 1000台全自动交互部署 (监控统计版)     ${PLAIN}"
+echo -e "${BLUE}       REALITY 1000台全自动部署 (重试增强版)        ${PLAIN}"
 echo -e "${BLUE}==================================================${PLAIN}"
 
 # 1. 自动安装基础依赖并创建目录
@@ -21,7 +21,7 @@ WORKDIR="/root/reality_batch"
 mkdir -p ${WORKDIR}/results
 cd ${WORKDIR}
 
-# 2. 写入增强版 deploy.yml
+# 2. 写入 deploy.yml (按要求生成完整版)
 cat << 'EOF' > deploy.yml
 ---
 - name: 1000台服务器 REALITY 全自动部署
@@ -147,7 +147,6 @@ cat << 'EOF' > deploy.yml
       delegate_to: localhost
       run_once: true
       shell: |
-        cat << 'PY' > gen_links.py
         import os, urllib.parse, base64
         links = []
         res_dir = './results'
@@ -165,13 +164,11 @@ cat << 'EOF' > deploy.yml
                             except: pass
             with open('all_links.txt', 'w') as f: f.write('\n'.join(links))
             with open('subscribe.txt', 'w') as f: f.write(base64.b64encode('\n'.join(links).encode()).decode())
-        PY
-        python3 gen_links.py
       args:
-        executable: /bin/bash
+        executable: python3
 EOF
 
-# 3. 交互式生成 hosts.ini (加入输入序号统计)
+# 3. 交互录入逻辑
 echo -e "${YELLOW}现在开始录入服务器。全部完成后，在 [IP地址] 处直接回车开始部署。${PLAIN}"
 cat << 'EOF' > hosts.ini
 [nodes]
@@ -189,7 +186,6 @@ while true; do
     read -p "SSH 密码: " V_PASS
     if [[ -z "$V_PASS" ]]; then echo -e "${RED}跳过：密码必填${PLAIN}"; continue; fi
 
-    # 这里记录序号 input_order
     echo "$V_IP ansible_port=$V_PORT ansible_ssh_user=$V_USER ansible_ssh_pass=\"$V_PASS\" input_order=$COUNT" >> hosts.ini
     let COUNT++
 done
@@ -200,50 +196,76 @@ ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
 EOF
 
-# 4. 自动执行部署并汇总结果分析
-if [ $COUNT -gt 1 ]; then
-    echo -e "\n${GREEN}正在启动部署，请稍候...${PLAIN}"
-    # 记录执行日志以便分析
-    ansible-playbook -i hosts.ini deploy.yml -f 30 | tee deploy.log
-    
-    # --- 统计汇总逻辑 ---
+# 4. 核心部署与重试函数
+function run_deployment() {
+    local INI_FILE=$1
+    echo -e "\n${GREEN}正在启动部署任务...${PLAIN}"
+    ansible-playbook -i $INI_FILE deploy.yml -f 30
+
+    # 统计结果
     SUCCESS_COUNT=$(ls ./results/*.txt 2>/dev/null | wc -l)
-    TOTAL_INPUT=$((COUNT-1))
-    FAIL_COUNT=$((TOTAL_INPUT - SUCCESS_COUNT))
+    # 获取当前 ini 文件中的 IP 总数
+    TOTAL_IN_INI=$(grep "ansible_port=" $INI_FILE | wc -l)
     
-    # 清空旧的失败记录
+    # 清空并提取失败 IP
     > failed_nodes.txt
-    
+    local FAIL_INTERNAL=0
+    while read -r line; do
+        if [[ $line =~ ^([0-9\.]+)\ .*ansible_port=([0-9]+).*input_order=([0-9]+) ]]; then
+            IP="${BASH_REMATCH[1]}"
+            PORT="${BASH_REMATCH[2]}"
+            ORDER="${BASH_REMATCH[3]}"
+            # 提取这一行完整的参数，用于生成 retry_hosts.ini
+            FULL_LINE="$line"
+            if [ ! -f "./results/$IP.txt" ]; then
+                echo "$FULL_LINE" >> failed_nodes.txt
+                let FAIL_INTERNAL++
+            fi
+        fi
+    done < $INI_FILE
+
     echo -e "\n${BLUE}==================================================${PLAIN}"
     echo -e "${BLUE}               🚀 部署执行结果总结               ${PLAIN}"
     echo -e "${BLUE}==================================================${PLAIN}"
-    echo -e "${GREEN}成功录入总数: $TOTAL_INPUT${PLAIN}"
-    echo -e "${GREEN}成功部署数量: $SUCCESS_COUNT${PLAIN}"
+    echo -e "${GREEN}本次尝试总数: $TOTAL_IN_INI${PLAIN}"
+    echo -e "${GREEN}当前累计成功: $SUCCESS_COUNT${PLAIN}"
     
-    if [ $FAIL_COUNT -gt 0 ]; then
-        echo -e "${RED}失败部署数量: $FAIL_COUNT${PLAIN}"
-        echo -e "${YELLOW}--------------------------------------------------${PLAIN}"
-        echo -e "${YELLOW}失败的服务器详情 (序号: IP):${PLAIN}"
+    if [ $FAIL_INTERNAL -gt 0 ]; then
+        echo -e "${RED}本次失败数量: $FAIL_INTERNAL${PLAIN}"
+        echo -e "${YELLOW}失败 IP 列表 (序号: IP):${PLAIN}"
+        while read -r fline; do
+            [[ $fline =~ input_order=([0-9]+) ]] && ORDER_NUM=${BASH_REMATCH[1]}
+            [[ $fline =~ ^([0-9\.]+) ]] && IP_VAL=${BASH_REMATCH[1]}
+            echo -e "${RED}序号 $ORDER_NUM: $IP_VAL${PLAIN}"
+        done < failed_nodes.txt
         
-        # 提取失败 IP 的逻辑：读取 hosts.ini 中的 IP，检查 results 目录下是否存在对应的结果文件
-        while read -r line; do
-            if [[ $line =~ ^([0-9\.]+)\ .*input_order=([0-9]+) ]]; then
-                IP="${BASH_REMATCH[1]}"
-                ORDER="${BASH_REMATCH[2]}"
-                if [ ! -f "./results/$IP.txt" ]; then
-                    echo -e "${RED}序号 $ORDER: $IP${PLAIN}"
-                    echo "序号 $ORDER: $IP" >> failed_nodes.txt
-                fi
-            fi
-        done < hosts.ini
         echo -e "${YELLOW}--------------------------------------------------${PLAIN}"
-        echo -e "${RED}失败详情已保存至: ${WORKDIR}/failed_nodes.txt${PLAIN}"
+        read -p "检测到失败节点，是否尝试立即重试部署这些失败节点? (y/n): " DO_RETRY
+        if [[ "$DO_RETRY" == "y" || "$DO_RETRY" == "Y" ]]; then
+            # 构造临时重试 ini
+            cat << 'EOF' > retry_hosts.ini
+[nodes]
+EOF
+            cat failed_nodes.txt >> retry_hosts.ini
+            cat << 'EOF' >> retry_hosts.ini
+[nodes:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
+EOF
+            # 递归调用
+            run_deployment "retry_hosts.ini"
+        fi
     else
-        echo -e "${GREEN}恭喜！所有服务器均部署成功！${PLAIN}"
+        echo -e "${GREEN}恭喜！本次任务内所有服务器均已部署成功！${PLAIN}"
     fi
+}
 
-    echo -e "\n${CYAN}节点链接文件: ${WORKDIR}/all_links.txt${PLAIN}"
-    echo -e "${CYAN}订阅链接文件: ${WORKDIR}/subscribe.txt${PLAIN}"
+# 启动首次部署
+if [ $COUNT -gt 1 ]; then
+    run_deployment "hosts.ini"
+    
+    echo -e "\n${CYAN}节点明文文件: ${WORKDIR}/all_links.txt${PLAIN}"
+    echo -e "${CYAN}Base64订阅文件: ${WORKDIR}/subscribe.txt${PLAIN}"
     echo -e "${BLUE}==================================================${PLAIN}"
 else
     echo -e "${YELLOW}未添加任何服务器，脚本结束。${PLAIN}"
