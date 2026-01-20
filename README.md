@@ -117,9 +117,11 @@ cd /root/reality_batch && ansible-playbook -i hosts.ini deploy.yml -f 30
 </s>
 
 
-
-随便选择一个debian系统的vps作为主控机，对被控机进行批量控制，在被控机上生成vless + reality + tls + 网页伪装 的节点。
-生成的节点全部回收并保存在主控机的 /root/reality_batch/all_links.txt
+# <mark>注意、注意、注意</mark>
+# <mark>注意、注意、注意</mark>
+# <mark>注意、注意、注意</mark>
+  随便选择一个debian系统的vps作为主控机，对被控机进行批量控制，在被控机上生成vless + reality + tls + 网页伪装 的节点。
+  生成的节点全部回收并保存在主控机的 /root/reality_batch/all_links.txt
 
 # <mark>注意、最新一键版本仅需要主控机执行下方一键脚本</mark>
 # <mark>注意、最新一键版本仅需要主控机执行下方一键脚本</mark>
