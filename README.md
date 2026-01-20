@@ -45,7 +45,7 @@ ansible-playbook -i hosts.ini deploy.yml -f 50
 ```bash
 ansible-playbook -i hosts.ini cleanup.yml -f 50
 ```
-</s>
+
 
 ### 只需要：
 1. 准备好 hosts.ini -> 2. 运行一次 deploy.yml。所有的事情（包括生成链接）都会在这一步里全部完成。
@@ -108,15 +108,25 @@ wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/inst
 wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive.sh && bash install_interactive.sh
 ```
 
-# <mark>真一键+交互+自动执行+随机鼠标跟随粒子云</mark>
-
-```bash
-wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive2.sh && bash install_interactive2.sh
-```
-
-
 # <mark>然后执行这个</mark>
 
 ```bash
 cd /root/reality_batch && ansible-playbook -i hosts.ini deploy.yml -f 30
 ```
+
+</s>
+
+
+
+
+# <mark>注意、最新一键版本仅需要执行下方一键脚本</mark>
+# <mark>注意、最新一键版本仅需要执行下方一键脚本</mark>
+# <mark>注意、最新一键版本仅需要执行下方一键脚本</mark>
+# <mark>真一键+debian系统更新源设置并更新系统+交互+自动执行+被控机随机粒子云网页伪装效果</mark>
+
+```bash
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive6.sh && bash install_interactive6.sh
+```
+
+
+
