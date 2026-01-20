@@ -10,7 +10,7 @@
 # <mark>真一键+debian系统更新源设置并更新系统+交互+自动执行+被控机随机粒子云网页伪装效果</mark>
 
 ```bash
-wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive6.sh && bash install_interactive6.sh
+wget -N https://raw.githubusercontent.com/weilaikeqi886/-vle-real-tls-/main/install_interactive7.sh && bash install_interactive7.sh
 ```
 
 
